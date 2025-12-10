@@ -10,4 +10,4 @@
   tasks:
     - name: Set hostname
       ansible.builtin.hostname:
-        name: espresso-instance
+        name: espresso-instance # hostname you want to change to
