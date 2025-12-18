@@ -1,15 +1,42 @@
 - name: Set up virtual machine on Proxmox
   hosts: localhost
   vars:
-    vm_name: test-garbador
-    vm_template: ubuntu-cloud-template-v2
-    proxmox_node: int531-03
-    proxmox_api_host: 10.13.104.213
+    vm_name: godegapoke
+    vm_template: ubuntu-cloud-template-v1
+    proxmox_node: int531-02
+    proxmox_api_host: 10.13.104.212
     proxmox_api_user: root@pam
-    proxmox_api_password: int53103
+    proxmox_api_password: int53102
     proxmox_storage: local-lvm
-    vm_target_ip: 10.13.104.61
+    vm_target_ip: 10.13.104.221
+    ssh_key_path: "{{ playbook_dir }}/privatekey"
   tasks:
+    - name: Remove existing SSH key pair
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ ssh_key_path }}"
+        - "{{ ssh_key_path }}.pub"
+
+    - name: Generate SSH key pair
+      community.crypto.openssh_keypair:
+        path: "{{ ssh_key_path }}"
+        type: ed25519
+        comment: "sysadmin@{{ vm_target_ip }}"
+        mode: '0600'
+        force: true
+      register: ssh_keypair
+
+    - name: Read public key
+      ansible.builtin.slurp:
+        src: "{{ ssh_key_path }}.pub"
+      register: ssh_pubkey
+
+    - name: Set SSH public key fact
+      ansible.builtin.set_fact:
+        vm_ssh_pubkey: "{{ ssh_pubkey.content | b64decode | trim }}"
+
     - name: Ping my hosts
       ansible.builtin.ping:
 
@@ -65,11 +92,11 @@
         api_host: "{{ proxmox_api_host }}"
         node: "{{ proxmox_node }}"
         name: "{{ vm_name }}"
-        ciuser: ansible
-        cipassword: ansible
-        sshkeys: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK2xWDuy6aWDhjwDL8hdv36gczNPT3k4s8AbIglGbND8 ansible@10.13.104.61'
+        ciuser: root
+        cipassword: int53102
+        sshkeys: "{{ vm_ssh_pubkey }}"
         ipconfig:
-          ipconfig0: 'ip=10.13.104.61/24,gw=10.13.104.254'
+          ipconfig0: 'ip={{ vm_target_ip }}/24,gw=10.13.104.254'
         update: yes
 
     - name: Start VM
@@ -91,31 +118,15 @@
         timeout: 300
 
 - name: Configure the new VM hostname
-  hosts: 10.13.104.61
+  hosts: 10.13.104.221
   gather_facts: yes
   become: yes
   vars:
-    ansible_host: 10.13.104.61
-    ansible_user: ansible
-    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
-    ansible_ssh_private_key_file: "./privatekey"
-  tasks:
-
-    - name: Update apt cache
-      apt:
-        update_cache: yes
-
-    - name: Install Docker Engine (apt version)
-      apt:
-        name: docker.io
-        state: present
-
-    - name: Install Docker Compose v2
-      apt:
-        name: docker-compose-v2
-        state: present
-
-    - name: Make sure a service unit is running
-      ansible.builtin.systemd_service:
-        state: started
-        name: docker
+    ansible_host: 10.13.104.221
+    ansible_user: root
+    ansible_ssh_private_key_file: "{{ playbook_dir }}/privatekey"
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o PreferredAuthentications=publickey -o ControlMaster=no'
+  roles:
+    - common
+    - app
+    - monitor

@@ -1,0 +1,52 @@
+---
+# roles/app/tasks/main.yml
+# Deploys the containerized application
+
+- name: Install Docker dependencies
+  apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+    state: present
+
+- name: Install Docker Engine (apt version)
+  apt:
+    name: docker.io
+    state: present
+
+- name: Install Docker Compose v2
+  apt:
+    name: docker-compose-v2
+    state: present
+
+- name: Ensure Docker service is running
+  ansible.builtin.systemd_service:
+    name: docker
+    state: started
+    enabled: yes
+
+- name: Add sysadmin to docker group
+  ansible.builtin.user:
+    name: sysadmin
+    groups: docker
+    append: yes
+
+- name: Create app directory
+  ansible.builtin.file:
+    path: /opt/app
+    state: directory
+    owner: sysadmin
+    group: sysadmin
+    mode: '0755'
+
+- name: Copy docker-compose.yml if exists
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/app/docker-compose.yml
+    owner: sysadmin
+    group: sysadmin
+    mode: '0644'
+  ignore_errors: yes

@@ -1,0 +1,62 @@
+---
+# roles/common/tasks/main.yml
+# Sets up users, SSH keys, NTP
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install common packages
+  apt:
+    name:
+      - chrony
+      - curl
+      - wget
+      - vim
+      - htop
+      - net-tools
+    state: present
+
+- name: Ensure Chrony service is running
+  ansible.builtin.systemd_service:
+    name: chrony
+    state: started
+    enabled: yes
+
+- name: Create sysadmin user
+  ansible.builtin.user:
+    name: sysadmin
+    shell: /bin/bash
+    groups: sudo
+    append: yes
+    create_home: yes
+    state: present
+
+- name: Ensure .ssh directory exists for sysadmin
+  ansible.builtin.file:
+    path: /home/sysadmin/.ssh
+    state: directory
+    owner: sysadmin
+    group: sysadmin
+    mode: '0700'
+
+- name: Add SSH authorized key for sysadmin
+  ansible.builtin.authorized_key:
+    user: sysadmin
+    state: present
+    key: "{{ lookup('file', playbook_dir + '/privatekey.pub') }}"
+
+- name: Allow sysadmin to sudo without password
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers.d/sysadmin
+    line: 'sysadmin ALL=(ALL) NOPASSWD:ALL'
+    state: present
+    create: yes
+    mode: '0440'
+    validate: 'visudo -cf %s'
+
+- name: Set timezone to Asia/Bangkok
+  community.general.timezone:
+    name: Asia/Bangkok
+  ignore_errors: yes
